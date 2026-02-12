@@ -14,8 +14,16 @@ reusable_oauth2 = OAuth2PasswordBearer(tokenUrl=f"{config.settings.API_V1_STR}/a
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 def get_db() -> Generator:
+    db = SessionLocal()
     try:
-        db = SessionLocal()
+        # 1. Check Context for Tenant
+        ctx = context.get_context()
+        if ctx and ctx.org_id:
+            db.execute(f"SET app.current_tenant = '{str(ctx.org_id)}';")
+        else:
+            # Optionally reset to avoid contamination if session is pooled
+            db.execute("SET app.current_tenant = '';")
+            
         yield db
     finally:
         db.close()

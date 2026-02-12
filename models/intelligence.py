@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Boolean, ForeignKey, Enum as SqlEnum, JSON, DateTime, func, Integer
+from sqlalchemy import Column, String, Float, Boolean, ForeignKey, Enum as SqlEnum, JSON, DateTime, func, Integer, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 import enum
@@ -110,3 +110,48 @@ class SparePart(Base, TenantMixin):
     quantity_on_hand = Column(Integer, default=0)
     cost_per_unit = Column(Float, default=0.0)
     lead_time_days = Column(Integer, default=1)
+
+# --- Physically Grounded Intelligence Models ---
+
+class AssetHealthState(Base, TenantMixin):
+    """
+    Persists the cumulative damage and health vectors for an asset.
+    """
+    __tablename__ = "asset_health_state"
+    
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("asset.id"), nullable=False, unique=True)
+    
+    __table_args__ = (
+        Index("idx_health_tenant_asset", "org_id", "asset_id"),
+    )
+    
+    # Cumulative Damage Counters
+    total_cumulative_damage = Column(Float, default=0.0)
+    cumulative_mechanical_damage = Column(Float, default=0.0)
+    cumulative_thermal_damage = Column(Float, default=0.0)
+    cumulative_electrical_damage = Column(Float, default=0.0)
+    cumulative_strain_damage = Column(Float, default=0.0)
+    cumulative_environmental_damage = Column(Float, default=0.0)
+    
+    # Probabilistic Thresholds (Learned)
+    failure_threshold_mean = Column(Float, default=1.0) # Normalized capacity
+    failure_threshold_std = Column(Float, default=0.05)
+    
+    # Health Vectors (Current Scores 0-100)
+    mechanical_health_score = Column(Float, default=100.0)
+    thermal_health_score = Column(Float, default=100.0)
+    electrical_health_score = Column(Float, default=100.0)
+    environmental_health_score = Column(Float, default=100.0)
+    operational_health_score = Column(Float, default=100.0)
+    
+    # Shift Violation Metrics
+    shift_violation_count = Column(Integer, default=0)
+    shift_anomaly_score = Column(Float, default=0.0)
+    last_shift_modifier = Column(Float, default=1.0)
+    
+    # Uncertainty
+    confidence_score = Column(Float, default=1.0)
+    last_updated = Column(DateTime, default=func.now(), onupdate=func.now())
+    
+    # Historical Damage Rates (for RUL derivation)
+    damage_rate_history = Column(JSON, default=list) # List of recent increments

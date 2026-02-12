@@ -4,9 +4,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from fastapi import Request as FastAPIRequest
-from core import context
+from jose import jwt, JWTError
+from core import context, config
 from core.logging import logger
 import traceback
+from uuid import UUID
+from starlette.responses import JSONResponse
 
 class OperationalMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -60,3 +63,45 @@ class OperationalMiddleware(BaseHTTPMiddleware):
             )
             
         return response
+
+class TenantMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 1. Skip paths that don't need tenant isolation (auth, docs, health)
+        path = request.url.path
+        if not path.startswith(config.settings.API_V1_STR) or path.startswith(f"{config.settings.API_V1_STR}/auth") or path == "/health":
+            return await call_next(request)
+
+        # 2. Extract Token
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                payload = jwt.decode(
+                    token, config.settings.SECRET_KEY, algorithms=[config.settings.ALGORITHM]
+                )
+                user_id = payload.get("sub")
+                org_id = payload.get("org_id")
+                role = payload.get("role")
+
+                if org_id:
+                    # Update existing context with tenant info
+                    current_ctx = context.get_context()
+                    if current_ctx:
+                        current_ctx.org_id = UUID(org_id)
+                        current_ctx.user_id = UUID(user_id) if user_id else current_ctx.user_id
+                        current_ctx.role = role
+                    else:
+                        new_ctx = context.RequestContext(
+                            user_id=UUID(user_id) if user_id else None,
+                            org_id=UUID(org_id),
+                            role=role
+                        )
+                        context.set_context(new_ctx)
+                    
+                    # logger.debug(f"Tenant Context Injected: {org_id}")
+
+            except (JWTError, Exception) as e:
+                # We allow the request to continue; deps.get_current_user will fail it if required.
+                logger.warning(f"Tenant extraction failed: {e}")
+
+        return await call_next(request)

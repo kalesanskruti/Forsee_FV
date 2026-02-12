@@ -4,7 +4,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.api import api_router
 from core.config import settings
-from api.middleware import OperationalMiddleware
+from api.middleware import OperationalMiddleware, TenantMiddleware
 from core.ratelimit import limiter, _rate_limit_exceeded_handler, RateLimitExceeded
 
 app = FastAPI(
@@ -17,6 +17,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Set all CORS enabled, valid for this assignment
 app.add_middleware(OperationalMiddleware)
+app.add_middleware(TenantMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,11 +39,17 @@ def on_startup():
     # Initialize TimescaleDB (ensure extension and hypertables)
     from db.session import SessionLocal
     from db.timescaledb import init_timescaledb
+    from ml.inference import inference_engine
+    
     db = SessionLocal()
     try:
         init_timescaledb(db)
+        # Load active models
+        inference_engine.load_active_models(db)
     except Exception as e:
-        print(f"DB INIT SKIPPED: {e}")
+        print(f"STARTUP ERROR: {e}")
+        # Re-raise to crash if critical (InferenceEngine raises if PROD)
+        raise e
     finally:
         db.close()
 

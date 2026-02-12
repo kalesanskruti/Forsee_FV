@@ -86,13 +86,15 @@ def submit_outcome(
     asset_id: UUID,
     action_taken: str,
     was_successful: bool,
-    notes: str
+    notes: str,
+    degradation_modifier: float = None
 ) -> Any:
     """
     4. OUTCOME FEEDBACK LOOP API
     """
+    from services.intelligence import IntelligenceService
     IntelligenceService.process_outcome_feedback(
-        db, asset_id, action_taken, was_successful, notes
+        db, asset_id, action_taken, was_successful, notes, degradation_modifier
     )
     return {"status": "recorded"}
 

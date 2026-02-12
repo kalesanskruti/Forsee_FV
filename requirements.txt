@@ -17,3 +17,5 @@ pandas
 numpy
 scikit-learn
 bcrypt
+kafka-python
+redis
